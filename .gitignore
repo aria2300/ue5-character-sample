@@ -1,0 +1,63 @@
+# Intermediate files
+/Intermediate/
+/Saved/
+
+# Build products
+/Binaries/
+/Build/
+
+# Visual Studio files
+*.suo
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+/DerivedDataCache/
+
+# Unreal Engine Editor settings
+/Config/
+
+# macOS specific files
+.DS_Store
+
+# Windows specific files
+Thumbs.db
+
+# Linux specific files
+*~
+
+# Backup files
+*.bak
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+
+# Compiled source files
+*.obj
+*.o
+*.exe
+.dll
+*.pdb
+
+# Generated files
+*.generated.h
+
+# Cache files
+*.cache
+
+# Other IDE specific files
+.idea/
+.vscode/
+
+# Xcode specific files
+*.xcworkspace
+*.xcodeproj
+*.xcuserstate
+*.code-workspace
+
+# Unreal Engine specific files
+/Content/__ExternalActors__/
+/Content/__ExternalObjects__/
+/Content/ThirdParty/

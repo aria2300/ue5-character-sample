@@ -13,76 +13,79 @@ APlayerCharacter::APlayerCharacter()
     // Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
     PrimaryActorTick.bCanEverTick = true;
 
-// ====================================================================
-    // >>> 三國無雙類型轉向的核心設定 <<<
+    // ====================================================================
+    // >>> 角色移動設定，實現「無雙類」轉向 <<<
     // ====================================================================
 
-    // 禁用角色（通常是 Mesh）跟隨控制器 Yaw 軸旋轉
-    bUseControllerRotationYaw = false; // 角色身體不再跟隨攝影機左右轉動
+    // 禁用角色身體的 Yaw 軸旋轉跟隨控制器（攝影機）的 Yaw 軸旋轉
+    bUseControllerRotationYaw = false; // 角色的身體將不會跟隨攝影機左右轉動
     bUseControllerRotationPitch = false;
     bUseControllerRotationRoll = false;
 
-    // 獲取 CharacterMovementComponent
+    // 取得角色移動組件
     UCharacterMovementComponent* MovementComp = GetCharacterMovement();
     if (MovementComp)
     {
-        // 啟用：讓角色自動面向其移動的方向
+        // 啟用：讓角色自動面向其移動的方向 (這是實現無雙式轉向的關鍵)
         MovementComp->bOrientRotationToMovement = true; 
         
-        // 設定角色的轉向速度，通常設得很高，使其轉向看起來很迅速
-        // 你可以調整這個值來達到最符合三國無雙的「瞬時」感
-        MovementComp->RotationRate = FRotator(0.0f, 1000.0f, 0.0f); // 例子：每秒 1000 度，非常快
-                                                                 // 設為更大的值如 2000.0f 或 3600.0f (10圈/秒) 甚至 99999.0f 
-                                                                 // 會更接近瞬時轉身。
+        // 設定角色的轉向速度，通常設得非常快，使其轉向看起來幾乎是瞬時的
+        // 您可以調整這個值 (例如：2000.0f, 3600.0f, 或更高) 來達到最符合您需求的「瞬時」感。
+        MovementComp->RotationRate = FRotator(0.0f, 3600.0f, 0.0f); // 範例：每秒 3600 度，非常快速
 
-        // 設置移動速度（根據你的遊戲設計）
-        MovementComp->MaxWalkSpeed = 600.0f; // 範例值，根據需要調整
-        MovementComp->JumpZVelocity = 600.f; // 範例值，根據需要調整
-        MovementComp->AirControl = 0.2f;     // 範例值，根據需要調整
+        // 設定預設移動速度 (根據您的遊戲設計調整)
+        MovementComp->MaxWalkSpeed = 600.0f;
+        MovementComp->JumpZVelocity = 600.f;
+        MovementComp->AirControl = 0.2f;
     }
 
-    // 設置攝影機和 SpringArm (如果你的角色有這些組件)
-    // 通常三國無雙類型的遊戲，攝影機也可能會比較固定地跟隨角色背面
-    // 或者有自動調整的功能。如果你的攝影機也要跟隨控制器的 Yaw，請確保 SpringArm 的 Use Pawn Control Rotation 為 true
+    // 設定 SpringArm 和攝影機 (假設您的角色有這些組件)
+    // Spring Arm 使用 Pawn Control Rotation 以允許攝影機獨立於角色身體旋轉
     USpringArmComponent* CameraBoom = FindComponentByClass<USpringArmComponent>();
     if (CameraBoom)
     {
-        CameraBoom->bUsePawnControlRotation = true; // Spring Arm 會跟隨控制器的 Yaw 軸旋轉
-        // CameraBoom->bInheritPitch = true; // 根據需要設置
-        // CameraBoom->bInheritRoll = true;  // 根據需要設置
-        // CameraBoom->bDoCollisionTest = true; // 確保碰撞檢測
+        CameraBoom->bUsePawnControlRotation = true; // Spring Arm 將會跟隨控制器的 Yaw 軸旋轉
+        CameraBoom->bInheritPitch = true; // 繼承 Pitch 軸旋轉
+        CameraBoom->bInheritRoll = true;  // 繼承 Roll 軸旋轉
+        CameraBoom->bDoCollisionTest = true; // 啟用碰撞檢測，防止攝影機穿牆
     }
 
     UCameraComponent* FollowCamera = FindComponentByClass<UCameraComponent>();
     if (FollowCamera)
     {
-        FollowCamera->bUsePawnControlRotation = false; // 相機本身不旋轉，而是由 Spring Arm 旋轉
+        FollowCamera->bUsePawnControlRotation = false; // 攝影機本身不直接旋轉，它會跟隨 Spring Arm
     }
+
+    // 初始化入場動畫的旗標
+    bIsPlayingEntranceAnimation = false;
+
+    // 預設啟用膠囊碰撞體的碰撞
+    GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 }
 
-// Called when the game starts or when spawned
+// BeginPlay：在遊戲開始時或角色被生成時呼叫
 void APlayerCharacter::BeginPlay()
 {
     Super::BeginPlay();
     
-    // ====================================================================
-    // >>> 在遊戲開始時添加 Input Mapping Context <<<
-    // ====================================================================
-    if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+    // 取得玩家控制器
+    APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    if (PlayerController)
     {
-        if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+        // 取得 Enhanced Input Local Player 子系統
+        UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
+        if (Subsystem)
         {
-            if (DefaultMappingContext)
-            {
-                Subsystem->AddMappingContext(DefaultMappingContext, 0); 
-                UE_LOG(LogTemp, Log, TEXT("Added DefaultMappingContext to Player Subsystem."));
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("DefaultMappingContext is NULL, cannot add to Player Subsystem."));
-            }
+            // 添加預設的輸入映射上下文
+            Subsystem->AddMappingContext(DefaultMappingContext, 0); // 優先級設為 0
         }
     }
+
+    // ====================================================================
+    // >>> 遊戲初始狀態：禁用輸入並播放入場動畫 <<<
+    // ====================================================================
+    SetPlayerInputEnabled(false); // 遊戲開始時，先禁用玩家輸入
+    PlayEntranceAnimation();      // 播放角色的入場動畫
 }
 
 // Called every frame
@@ -91,48 +94,46 @@ void APlayerCharacter::Tick(float DeltaTime)
     Super::Tick(DeltaTime);
 
     // ====================================================================
-    // >>> 動畫狀態變數更新 (MovementDirection 的計算可能需要重新思考) <<<
+    // >>> 動畫狀態變數更新 <<<
     // ====================================================================
     if (GetCharacterMovement())
     {
-        CurrentSpeed = GetVelocity().Size();
-        bIsFalling = GetCharacterMovement()->IsFalling();
+        CurrentSpeed = GetVelocity().Size(); // 取得當前速度
+        bIsFalling = GetCharacterMovement()->IsFalling(); // 判斷是否正在下落
 
-        // 由於 bOrientRotationToMovement = true，角色總是面向移動方向
-        // 所以 MovementDirection 永遠應該接近 0 (相對於自身總是向前)
-        // 這意味著你可能不再需要 MovementDirection，或者可以直接將它設為 0
-        // 如果你仍然有需要平移動畫的場景，MovementDirection 依然有用
-        if (CurrentSpeed > KINDA_SMALL_NUMBER) 
+        // 由於 bOrientRotationToMovement 為 true，角色總是面向移動方向。
+        // 因此，MovementDirection 通常會接近 0 (相對於自身總是向前)。
+        // 這個變數主要用於動畫藍圖中，如果需要混合側身移動或後退動畫時，它仍然有用。
+        if (CurrentSpeed > KINDA_SMALL_NUMBER) // 如果有明顯的移動速度
         {
-            // 如果你只想要純粹的前進動畫，可以簡化這部分
-            // MovementDirection = 0.0f; // 简单粗暴地设为 0
-            
-            // 如果你仍然希望在某些情況下能判斷平移（例如攻擊時的微調）
-            // 則這個計算仍然有效，但預期值會更接近 0
             FVector WorldVelocity = GetVelocity();
-            WorldVelocity.Z = 0.f; 
+            WorldVelocity.Z = 0.f; // 忽略垂直速度，只考慮水平方向
 
-            if (WorldVelocity.SizeSquared() > KINDA_SMALL_NUMBER)
+            if (WorldVelocity.SizeSquared() > KINDA_SMALL_NUMBER) // 確保速度不是零向量
             {
-                WorldVelocity.Normalize(); 
+                WorldVelocity.Normalize(); // 正規化速度向量
 
+                // 取得角色的當前 Yaw 旋轉 (只考慮水平旋轉)
                 const FRotator CharacterYawRotation(0, GetActorRotation().Yaw, 0);
+                // 將世界速度向量轉換為相對於角色自身局部空間的速度向量
                 FVector LocalVelocity = CharacterYawRotation.UnrotateVector(WorldVelocity);
 
+                // 計算移動方向的角度 (使用 Atan2(Y, X) 得到弧度，再轉換為角度)
                 MovementDirection = FMath::RadiansToDegrees(FMath::Atan2(LocalVelocity.Y, LocalVelocity.X));
             }
             else
             {
-                MovementDirection = 0.0f; 
+                MovementDirection = 0.0f; // 沒有移動，方向為 0
             }
         }
         else
         {
-            MovementDirection = 0.0f; 
+            MovementDirection = 0.0f; // 沒有移動，方向為 0
         }
     }
 }
 
+// SetupPlayerInputComponent：將功能綁定到輸入系統
 void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -140,19 +141,20 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
     UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent);
     if (EnhancedInputComponent)
     {
-        // 綁定 Move Action
+        // 綁定移動輸入動作
         if (MoveAction)
         {
             EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Move);
         }
         
-        // 綁定 Jump Action
+        // 綁定跳躍輸入動作
         if (JumpAction)
         {
-            EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Jump);
+            EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &APlayerCharacter::Jump);
+            EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &APlayerCharacter::StopJumping);
         }
 
-        // 綁定 Look Action (控制攝影機，但不影響角色身體的 Yaw)
+        // 綁定視角輸入動作
         if (LookAction)
         {
             EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Look);
@@ -161,42 +163,177 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 }
 
 // ====================================================================
-// >>> Move 函數保持不變，因為 AddMovementInput 會配合 bOrientRotationToMovement 工作 <<<
+// >>> 輸入處理實作 <<<
+// 包含在播放入場動畫期間禁用輸入的檢查
 // ====================================================================
+
 void APlayerCharacter::Move(const FInputActionValue& Value)
 {
-    FVector2D MovementVector = Value.Get<FVector2D>();
+    // 如果正在播放入場動畫，直接返回，不處理移動輸入
+    if (bIsPlayingEntranceAnimation) return;
+
+    FVector2D MovementVector = Value.Get<FVector2D>(); // 取得輸入的 2D 向量
 
     if (Controller != nullptr)
     {
-        // 獲取控制器的旋轉，但只使用 Yaw
-        // 這樣可以確保即使角色身體面向移動方向，你仍然可以基於攝影機方向輸入移動
+        // 取得控制器的旋轉 (特別是 Yaw 軸)，以便根據攝影機方向推導移動方向
         const FRotator ControlRotation = Controller->GetControlRotation();
         const FRotator YawRotation(0, ControlRotation.Yaw, 0); 
 
-        // 根據攝影機方向獲取前向和右向向量
+        // 根據攝影機的 Yaw 軸取得前向和右向向量
         const FVector ForwardDirection = UKismetMathLibrary::GetForwardVector(YawRotation);
         const FVector RightDirection = UKismetMathLibrary::GetRightVector(YawRotation);
 
-        // 添加移動輸入
-        // 角色會根據這些輸入的方向，自動轉向並向前移動
-        AddMovementInput(ForwardDirection, MovementVector.Y); // 前後移動
-        AddMovementInput(RightDirection, MovementVector.X); // 左右移動
+        // 添加移動輸入，角色將會自動朝向這個移動方向 (因為 bOrientRotationToMovement 已啟用)
+        AddMovementInput(ForwardDirection, MovementVector.Y); // 前進/後退 (Y 軸)
+        AddMovementInput(RightDirection, MovementVector.X);  // 左/右移動 (X 軸)
     }
 }
 
-// ====================================================================
-// >>> Look 函數保持不變，它仍然控制攝影機 <<<
-// ====================================================================
 void APlayerCharacter::Look(const FInputActionValue& Value)
 {
+    // 如果正在播放入場動畫，直接返回，不處理視角輸入
+    if (bIsPlayingEntranceAnimation) return;
+
     FVector2D LookAxisVector = Value.Get<FVector2D>();
 
     if (Controller != nullptr)
     {
-        // 這會轉動控制器，進而轉動相機。
-        // 由於 bUseControllerRotationYaw = false，角色身體的 Yaw 不會跟著轉
+        // 這些呼叫會旋轉控制器 (並透過 Spring Arm 旋轉攝影機)
+        // 角色的身體 Yaw 軸將不會跟隨，因為 bUseControllerRotationYaw 設定為 false
         AddControllerYawInput(LookAxisVector.X); 
         AddControllerPitchInput(LookAxisVector.Y);
+    }
+}
+
+void APlayerCharacter::Jump()
+{
+    // 如果正在播放入場動畫，直接返回，不處理跳躍輸入
+    if (bIsPlayingEntranceAnimation) return;
+
+    Super::Jump(); // 呼叫基底 Character 類的 Jump 函數
+}
+
+void APlayerCharacter::StopJumping()
+{
+    // 如果正在播放入場動畫，直接返回，不處理停止跳躍輸入
+    if (bIsPlayingEntranceAnimation) return;
+
+    Super::StopJumping(); // 呼叫基底 Character 類的 StopJumping 函數
+}
+
+
+// ====================================================================
+// >>> 入場動畫實作 <<<
+// ====================================================================
+
+void APlayerCharacter::PlayEntranceAnimation()
+{
+    if (EntranceMontage) // 檢查是否有設定入場動畫 Montage
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 取得角色的動畫實例
+        if (AnimInstance)
+        {
+            // 播放蒙太奇，速度為 1.0f (正常速度)
+            float Duration = AnimInstance->Montage_Play(EntranceMontage, 1.0f); 
+            
+            if (Duration > 0.0f) // 如果蒙太奇成功播放 (持續時間大於 0)
+            {
+                bIsPlayingEntranceAnimation = true; // 設定旗標為 true，表示正在播放入場動畫
+                
+                // 綁定到 Montage 結束事件作為安全網 (以防 Notify 失敗或蒙太奇被中斷)
+                // 先移除現有的委託，以防止重複綁定 (如果 PlayEntranceAnimation 被再次呼叫)
+                AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded); 
+                AnimInstance->OnMontageEnded.AddDynamic(this, &APlayerCharacter::OnMontageEnded);
+                
+                // 禁用角色移動組件
+                GetCharacterMovement()->DisableMovement();
+                // 在動畫期間禁用碰撞，防止角色被推動或卡住
+                GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision); 
+            }
+            else
+            {
+                // 如果 Montage_Play 返回 0.0 (例如，蒙太奇無效或播放失敗)
+                UE_LOG(LogTemp, Warning, TEXT("Montage_Play failed for EntranceMontage. Enabling Player Input."));
+                SetPlayerInputEnabled(true); // 如果蒙太奇無法播放，重新啟用輸入
+            }
+        }
+        else // 如果 AnimInstance 為空
+        {
+            UE_LOG(LogTemp, Warning, TEXT("AnimInstance is null for PlayerCharacter. Enabling Player Input."));
+            SetPlayerInputEnabled(true); // 如果 AnimInstance 為空，重新啟用輸入
+        }
+    }
+    else // 如果沒有設定入場動畫 Montage
+    {
+        UE_LOG(LogTemp, Warning, TEXT("EntranceMontage is not set on PlayerCharacter! Enabling Player Input."));
+        SetPlayerInputEnabled(true); // 如果沒有指定蒙太奇，直接啟用輸入
+    }
+}
+
+void APlayerCharacter::OnEntranceAnimationFinishedByNotify()
+{
+    // 此函數旨在由動畫藍圖透過 Anim Notify 呼叫。
+    // 它標誌著玩家應該重新獲得控制權的精確時刻。
+    if (bIsPlayingEntranceAnimation) // 只有當我們處於入場動畫狀態時才執行
+    {
+        UE_LOG(LogTemp, Log, TEXT("Entrance Animation Finished by Anim Notify! Enabling Player Input."));
+        bIsPlayingEntranceAnimation = false; // 設定旗標為 false，表示入場動畫結束
+        SetPlayerInputEnabled(true); // 啟用玩家輸入
+
+        // 重新啟用角色移動
+        GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 將移動模式設定回步行
+        // 重新啟用碰撞
+        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+        // 在通過 Notify 成功完成後，移除 OnMontageEnded 委託，以避免多餘的調用
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded);
+        }
+    }
+}
+
+void APlayerCharacter::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    // 這是一個安全網。如果蒙太奇因任何原因結束 (完成或中斷)，
+    // 並且玩家輸入尚未被 Notify 重新啟用，則強制重新啟用它。
+    if (Montage == EntranceMontage && bIsPlayingEntranceAnimation) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Entrance Montage Ended (safety net triggered)! Forcing Input Enabled."));
+        bIsPlayingEntranceAnimation = false;
+        SetPlayerInputEnabled(true);
+        GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+        // 總是移除委託，以防止陳舊的綁定
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded);
+        }
+    }
+}
+
+// ====================================================================
+// >>> 輔助函數實作 <<<
+// ====================================================================
+
+void APlayerCharacter::SetPlayerInputEnabled(bool bEnabled)
+{
+    APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    if (PlayerController)
+    {
+        if (bEnabled)
+        {
+            PlayerController->EnableInput(PlayerController); // 啟用玩家控制器輸入
+            UE_LOG(LogTemp, Log, TEXT("玩家輸入已啟用。")); // 輸出日誌訊息
+        }
+        else
+        {
+            PlayerController->DisableInput(PlayerController); // 禁用玩家控制器輸入
+            UE_LOG(LogTemp, Log, TEXT("玩家輸入已禁用。")); // 輸出日誌訊息
+        }
     }
 }

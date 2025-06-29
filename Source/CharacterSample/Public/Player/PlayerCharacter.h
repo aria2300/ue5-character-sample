@@ -14,6 +14,7 @@
 #include "GameFramework/SpringArmComponent.h" // SpringArmComponent 的頭文件 (如果使用相機臂)
 #include "Camera/CameraComponent.h" // CameraComponent 的頭文件 (如果使用相機)
 #include "GameFramework/CharacterMovementComponent.h" // CharacterMovementComponent 的頭文件
+#include "Kismet/KismetMathLibrary.h" // 用於 GetForwardVector 等
 
 #include "PlayerCharacter.generated.h" // 確保這是最後一個 #include
 
@@ -25,10 +26,6 @@ class CHARACTERSAMPLE_API APlayerCharacter : public ACharacter
 public:
     // 構造函數：設定角色屬性的預設值
     APlayerCharacter();
-
-protected:
-    // BeginPlay：在遊戲開始時或角色被生成時呼叫
-    virtual void BeginPlay() override;
 
 public:    
     // Tick：每一幀都會呼叫 (可以關閉以提升性能，如果不需要每幀更新)
@@ -54,6 +51,9 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
     class UInputAction* LookAction; // 視角輸入動作
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+    class UInputAction* AttackAction; // 攻擊輸入動作
+
     // ====================================================================
     // >>> 動畫相關屬性 <<<
     // 這些變數會傳遞給動畫藍圖，用於控制動畫混合
@@ -78,7 +78,20 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Entrance")
     bool bIsPlayingEntranceAnimation; // 標誌：指示是否正在播放入場動畫
 
+    // ====================================================================
+    // >>> 普通攻擊動畫屬性與狀態 <<<
+    // ====================================================================
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Attack")
+    class UAnimMontage* NormalAttackMontage; // 用於普通攻擊的 AnimMontage 資產
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
+    bool bIsAttacking; // 標誌：指示是否正在播放攻擊動畫
+
 protected:
+    // BeginPlay：在遊戲開始時或角色被生成時呼叫
+    virtual void BeginPlay() override;
+
     // ====================================================================
     // >>> 輸入處理函數 <<<
     // ====================================================================
@@ -114,6 +127,34 @@ protected:
      */
     UFUNCTION() // 宣告為 UFunction 以便被 Unreal 系統呼叫
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+    // **新增：攻擊輸入處理函數**
+    void Attack(const FInputActionValue& Value);
+
+    // ====================================================================
+    // >>> **新增：攻擊相關函數** <<<
+    // ====================================================================
+
+    /**
+     * @brief 播放普通攻擊動畫蒙太奇並禁用移動/輸入。
+     */
+    UFUNCTION(BlueprintCallable, Category = "Animation|Attack")
+    void PlayNormalAttack();
+
+    /**
+     * @brief 處理來自普通攻擊蒙太奇的 Anim Notify 事件，執行傷害判定。
+     * 此函數通常從動畫藍圖中透過 Anim Notify 事件呼叫 (例如：AnimNotify_HitCheck)。
+     */
+    UFUNCTION(BlueprintCallable, Category = "Animation|Attack")
+    void PerformNormalAttackHitCheck();
+
+    /**
+     * @brief 回調函數：普通攻擊蒙太奇播放結束或被中斷。
+     * 用於在攻擊動畫結束後，恢復角色狀態。
+     */
+    UFUNCTION()
+    void OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
 
 private:
     // ====================================================================

@@ -4,8 +4,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Kismet/KismetMathLibrary.h" // 用於 GetForwardVector 等
-
+#include "Kismet/KismetSystemLibrary.h" // 用於 Sweep Trace 函數 (如 UKismetSystemLibrary::SphereTraceMultiByChannel)
+#include "Engine/DamageEvents.h" // 用於 FDamageEvent
 
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -159,6 +159,12 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
         {
             EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Look);
         }
+
+        // 綁定攻擊輸入動作
+        if (AttackAction)
+        {
+            EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &APlayerCharacter::Attack);
+        }
     }
 }
 
@@ -222,6 +228,15 @@ void APlayerCharacter::StopJumping()
     Super::StopJumping(); // 呼叫基底 Character 類的 StopJumping 函數
 }
 
+// 攻擊輸入處理
+void APlayerCharacter::Attack(const FInputActionValue& Value)
+{
+    // 如果正在播放入場動畫或已經在攻擊中，則不允許再次攻擊
+    if (bIsPlayingEntranceAnimation || bIsAttacking) return;
+
+    // 呼叫播放普通攻擊動畫的函數
+    PlayNormalAttack();
+}
 
 // ====================================================================
 // >>> 入場動畫實作 <<<
@@ -312,6 +327,147 @@ void APlayerCharacter::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
         if (AnimInstance)
         {
             AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded);
+        }
+    }
+}
+
+// ====================================================================
+// >>> **新增：普通攻擊實作** <<<
+// ====================================================================
+
+void APlayerCharacter::PlayNormalAttack()
+{
+    if (NormalAttackMontage) // 檢查是否有設定普通攻擊 Montage
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 取得動畫實例
+        if (AnimInstance)
+        {
+            // 播放普通攻擊蒙太奇
+            float Duration = AnimInstance->Montage_Play(NormalAttackMontage, 1.0f); 
+            
+            if (Duration > 0.0f) // 如果成功播放
+            {
+                bIsAttacking = true; // 設定攻擊狀態為 true
+
+                // 綁定到普通攻擊 Montage 結束事件作為安全網
+                AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnNormalAttackMontageEnded); 
+                AnimInstance->OnMontageEnded.AddDynamic(this, &APlayerCharacter::OnNormalAttackMontageEnded);
+                
+                // 在攻擊期間禁用移動（或你可以設定一個減速）
+                GetCharacterMovement()->StopMovementImmediately(); // 立即停止移動
+                GetCharacterMovement()->DisableMovement(); // 禁用移動輸入影響
+                
+                // 這裡暫時不禁用碰撞，因為攻擊需要接觸敵人
+                // 如果你的攻擊動畫需要 Root Motion，則要確保 CharacterMovementComponent 的 Root Motion 設定正確
+            }
+            else
+            {
+                // 如果 Montage_Play 失敗，設定攻擊狀態為 false
+                UE_LOG(LogTemp, Warning, TEXT("Montage_Play failed for NormalAttackMontage."));
+                bIsAttacking = false;
+                GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 恢復移動模式
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("AnimInstance is null for PlayerCharacter during attack."));
+            bIsAttacking = false;
+            GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("NormalAttackMontage is not set on PlayerCharacter!"));
+        bIsAttacking = false;
+    }
+}
+
+void APlayerCharacter::PerformNormalAttackHitCheck()
+{
+    // 這個函數將由 Anim Notify 呼叫
+    UE_LOG(LogTemp, Log, TEXT("Performing Normal Attack Hit Check!"));
+
+    // 攻擊判定參數設定
+    FVector StartLocation = GetMesh()->GetSocketLocation(TEXT("weapon_l")); // 假設攻擊範圍從角色右手開始
+    // 如果沒有 hand_r 這個骨骼或 Socket，請替換為其他合適的 Socket 名稱，
+    // 或使用 GetActorLocation() + GetActorForwardVector() * Offset 來決定起始點。
+
+    // 延伸攻擊範圍，這裡向角色前方延伸 150 單位
+    FVector EndLocation = StartLocation + GetActorForwardVector() * 150.0f; 
+
+    // 用於儲存碰撞結果
+    TArray<FHitResult> HitResults;
+
+    // 碰撞查詢參數
+    FCollisionQueryParams Params;
+    Params.AddIgnoredActor(this); // 忽略角色自己，避免自體碰撞
+    Params.bTraceComplex = true; // 進行精確碰撞，而不是簡單體積
+
+    // 碰撞對象類型：只掃描 Pawn 和 PhysicsBody (通常敵人是 Pawn，環境可破壞物可能是 PhysicsBody)
+    // 這些通道需要你在 Project Settings -> Collision 中設定。
+    // 暫時可以先用 Default 的 WorldDynamic 或 ECC_Pawn
+    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn)); // 假設敵人是 Pawn 類型
+    // ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_PhysicsBody)); // 如果有可破壞的物理物體
+
+    // 掃描形狀：球體掃描 (或 BoxTrace, CapsuleTrace)
+    FCollisionShape SphereShape = FCollisionShape::MakeSphere(70.0f); // 掃描半徑 70 單位
+
+    // 執行多重球體掃描
+    bool bHit = UKismetSystemLibrary::SphereTraceMultiForObjects(
+        GetWorld(),
+        StartLocation,
+        EndLocation,
+        SphereShape.GetSphereRadius(), // 球體半徑
+        ObjectTypes,
+        false, // 不畫出除錯線
+        TArray<AActor*>(), // 額外忽略的 Actor 列表 (Params中已設定忽略自己)
+        EDrawDebugTrace::ForDuration, // 除錯線持續顯示一段時間
+        HitResults,
+        true, // 是否忽略自身
+        FLinearColor::Red, // 除錯線命中顏色
+        FLinearColor::Green, // 除錯線未命中顏色
+        5.0f // 除錯線顯示時間
+    );
+
+    if (bHit)
+    {
+        for (const FHitResult& Hit : HitResults)
+        {
+            if (AActor* HitActor = Hit.GetActor())
+            {
+                // 檢查是否是敵人 (或可受傷的 Actor)
+                // 這裡可以加入更精確的判斷，例如：
+                // if (HitActor->ActorHasTag(TEXT("Enemy")))
+                // 或 if (Cast<AEnemyCharacter>(HitActor))
+                
+                UE_LOG(LogTemp, Log, TEXT("攻擊命中: %s"), *HitActor->GetName());
+
+                // 造成傷害：使用 Unreal Engine 內建的 TakeDamage 函數
+                // 這是最基礎的傷害處理，未來會用 HealthComponent 來取代
+                FDamageEvent DamageEvent; // 簡單的傷害事件
+                HitActor->TakeDamage(25.0f, DamageEvent, GetController(), this); // 造成 25 點傷害
+            }
+        }
+    }
+}
+
+void APlayerCharacter::OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    // 如果結束的蒙太奇是我們的普通攻擊蒙太奇
+    if (Montage == NormalAttackMontage)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Normal Attack Montage Ended."));
+        bIsAttacking = false; // 重設攻擊狀態為 false
+
+        // 重新啟用移動
+        GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 將移動模式設定回步行
+
+        // 移除委託，防止多次綁定
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnNormalAttackMontageEnded);
         }
     }
 }

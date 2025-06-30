@@ -15,11 +15,12 @@
 #include "Camera/CameraComponent.h" // CameraComponent 的頭文件 (如果使用相機)
 #include "GameFramework/CharacterMovementComponent.h" // CharacterMovementComponent 的頭文件
 #include "Kismet/KismetMathLibrary.h" // 用於 GetForwardVector 等
+#include "Core/CharacterBase.h" // 引入基礎角色類別
 
 #include "PlayerCharacter.generated.h" // 確保這是最後一個 #include
 
 UCLASS()
-class CHARACTERSAMPLE_API APlayerCharacter : public ACharacter
+class CHARACTERSAMPLE_API APlayerCharacter : public ACharacterBase
 {
     GENERATED_BODY()
 

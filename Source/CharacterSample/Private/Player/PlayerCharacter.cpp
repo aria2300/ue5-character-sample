@@ -6,6 +6,11 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h" // 用於 Sweep Trace 函數 (如 UKismetSystemLibrary::SphereTraceMultiByChannel)
 #include "Engine/DamageEvents.h" // 用於 FDamageEvent
+// 必須包含 UserWidget.h，因為 CreateWidget 函數的原型需要它。
+#include "Blueprint/UserWidget.h" 
+// 包含你的 HealthBarBaseWidget C++ 類別的頭檔，以便能夠使用它的完整定義（例如 SetOwnerCharacterAndInitialize 函數）。
+#include "HealthBarBaseWidget.h" 
+
 
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -67,7 +72,32 @@ APlayerCharacter::APlayerCharacter()
 void APlayerCharacter::BeginPlay()
 {
     Super::BeginPlay();
-    
+
+    // --- UI 創建邏輯 ---
+    // 判斷是否是本地玩家控制的角色，這是為了防止在多人遊戲中，服務器或其他客戶端重複創建 UI。
+    if (IsLocallyControlled())
+    {
+        // 檢查藍圖中是否已經設置了 HealthBarWidgetClass。
+        // 如果沒有設置，HealthBarWidgetClass 會是 nullptr。
+        if (HealthBarWidgetClass)
+        {
+            // 使用 CreateWidget 函數來創建你的血條 Widget 實例。
+            // Cast<UHealthBarBaseWidget> 確保返回的實例是指向 UHealthBarBaseWidget 類型。
+            HealthBarWidgetInstance = CreateWidget<UHealthBarBaseWidget>(GetWorld(), HealthBarWidgetClass);
+
+            // 檢查是否成功創建了 Widget 實例。
+            if (HealthBarWidgetInstance)
+            {
+                // 呼叫你的 HealthBarBaseWidget 中定義的初始化函數，將當前角色 (this) 傳遞給它。
+                // 這樣血條 Widget 就能知道它屬於哪個角色，並開始監聽該角色的生命值變化。
+                HealthBarWidgetInstance->SetOwnerCharacterAndInitialize(this);
+
+                // 將創建的血條 Widget 添加到遊戲視口中，使其能夠被玩家看到。
+                HealthBarWidgetInstance->AddToViewport();
+            }
+        }
+    }
+
     // 取得玩家控制器
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     if (PlayerController)

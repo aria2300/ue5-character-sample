@@ -9,6 +9,7 @@
 // 宣告一個委託 (Delegate) 用於通知生命值變更 (可選，但很有用)
 // 這樣 UI 或其他系統可以訂閱這個事件來更新血條
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHealthChangedSignature, float, CurrentHealth, float, MaxHealth);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeathSignature);
 
 UCLASS()
 class CHARACTERSAMPLE_API ACharacterBase : public ACharacter
@@ -60,6 +61,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health|Invincibility")
     float InvincibilityDuration; // 無敵持續時間
 
+    // 當生命值改變時觸發 (例如 UI 更新血條)
+    UPROPERTY(BlueprintAssignable, Category = "Health") // Assignable 讓藍圖可以綁定事件
+    FOnHealthChangedSignature OnHealthChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "Health")
+    FOnDeathSignature OnDeath;
+
+    // 添加公共的 getter 函數，讓外部類別可以安全地獲取生命值
+    UFUNCTION(BlueprintPure, Category = "Health") // BlueprintPure 表示它不修改對象狀態，沒有執行引腳
+    float GetCurrentHealth() const { return CurrentHealth; }
+
+    UFUNCTION(BlueprintPure, Category = "Health")
+    float GetMaxHealth() const { return MaxHealth; }
+
 protected:
     // 私有變數，用於追蹤無敵計時器
     FTimerHandle InvincibilityTimerHandle;
@@ -72,10 +87,6 @@ protected:
 
     // --- 藍圖可實現事件 (BlueprintImplementableEvent) ---
     // 這些事件將在藍圖子類中被實現，用於處理視覺和音效反饋
-
-    // 當生命值改變時觸發 (例如 UI 更新血條)
-    UPROPERTY(BlueprintAssignable, Category = "Health") // Assignable 讓藍圖可以綁定事件
-    FOnHealthChangedSignature OnHealthChanged;
 
     // 當角色受到傷害時觸發 (例如播放受擊動畫、顯示受擊特效)
     UFUNCTION(BlueprintImplementableEvent, Category = "Health")

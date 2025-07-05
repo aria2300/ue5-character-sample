@@ -19,6 +19,11 @@
 
 #include "PlayerCharacter.generated.h" // 確保這是最後一個 #include
 
+// --- UI 相關的前置聲明 ---
+// 這裡需要前置聲明你的 UHealthBarBaseWidget C++ 類別
+// 這樣 C++ 編譯器在看到 TSubclassOf<UHealthBarBaseWidget> 和 UHealthBarBaseWidget* 時才知道它們是什麼
+class UHealthBarBaseWidget; 
+
 UCLASS()
 class CHARACTERSAMPLE_API APlayerCharacter : public ACharacterBase
 {
@@ -28,7 +33,6 @@ public:
     // 構造函數：設定角色屬性的預設值
     APlayerCharacter();
 
-public:    
     // Tick：每一幀都會呼叫 (可以關閉以提升性能，如果不需要每幀更新)
     virtual void Tick(float DeltaTime) override;
 
@@ -88,6 +92,15 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
     bool bIsAttacking; // 標誌：指示是否正在播放攻擊動畫
+
+    // --- UI 相關的 UPROPERTY 屬性 ---
+
+    // 這個屬性允許你在藍圖編輯器中指定要使用的血條 Widget Blueprint 類別。
+    // EditDefaultsOnly: 只能在藍圖的 Default 屬性中編輯，不能在實例上編輯。
+    // Category = "UI": 讓它在藍圖 Details 面板中歸類到 "UI" 分類下。
+    // TSubclassOf<UHealthBarBaseWidget>: 確保只能選擇繼承自 UHealthBarBaseWidget 的藍圖 Widget 類別。
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UHealthBarBaseWidget> HealthBarWidgetClass;
 
 protected:
     // BeginPlay：在遊戲開始時或角色被生成時呼叫
@@ -156,6 +169,10 @@ protected:
     UFUNCTION()
     void OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+    // 這個指針用於在 C++ 中引用已經創建的血條 Widget 實例。
+    // UPROPERTY(): 這是必須的，它讓 Unreal 的垃圾回收器能夠追蹤並管理這個 UObject 指針的生命週期。
+    UPROPERTY()
+    UHealthBarBaseWidget* HealthBarWidgetInstance; 
 
 private:
     // ====================================================================

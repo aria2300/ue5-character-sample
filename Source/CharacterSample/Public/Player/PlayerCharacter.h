@@ -93,7 +93,10 @@ public:
     void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 攻擊蒙太奇結束處理 (用於 Combo 邏輯)
 
     UFUNCTION(BlueprintCallable, Category = "Attack") // 提供給 Anim Notify 調用，設置下一段 Combo 的輸入窗口
-    void SetCanEnterNextCombo(bool bCan); 
+    void SetCanEnterNextCombo(bool bCan);
+
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void SetPendingNextComboInput(bool bPending);
 
     // ====================================================================
     // >>> UI 相關屬性 <<<
@@ -152,6 +155,8 @@ protected:
     // ====================================================================
     // >>> Combo 攻擊相關屬性 <<<
     // ====================================================================
+    bool bPendingNextComboInput; // 新增：標記是否有待處理的下一段Combo輸入
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
     bool bIsAttacking; // 是否正在進行攻擊（包括 Combo 的任何一段）
 

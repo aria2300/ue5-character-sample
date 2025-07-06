@@ -84,16 +84,20 @@ public:
     bool bIsPlayingEntranceAnimation; // 標誌：指示是否正在播放入場動畫
 
     // ====================================================================
-    // >>> 普通攻擊動畫屬性與狀態 <<<
+    // >>> Combo 攻擊相關函數 <<<
     // ====================================================================
+    UFUNCTION(BlueprintCallable, Category = "Attack") // 提供給 Anim Notify 調用
+    void PerformNormalAttackHitCheck(); // 執行攻擊判定
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Attack")
-    class UAnimMontage* NormalAttackMontage; // 用於普通攻擊的 AnimMontage 資產
+    UFUNCTION() // UFUNCTION 必須要有，因為它要被 AddDynamic 委託綁定
+    void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 攻擊蒙太奇結束處理 (用於 Combo 邏輯)
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
-    bool bIsAttacking; // 標誌：指示是否正在播放攻擊動畫
+    UFUNCTION(BlueprintCallable, Category = "Attack") // 提供給 Anim Notify 調用，設置下一段 Combo 的輸入窗口
+    void SetCanEnterNextCombo(bool bCan); 
 
-    // --- UI 相關的 UPROPERTY 屬性 ---
+    // ====================================================================
+    // >>> UI 相關屬性 <<<
+    // ====================================================================
 
     // 這個屬性允許你在藍圖編輯器中指定要使用的血條 Widget Blueprint 類別。
     // EditDefaultsOnly: 只能在藍圖的 Default 屬性中編輯，不能在實例上編輯。
@@ -142,37 +146,44 @@ protected:
     UFUNCTION() // 宣告為 UFunction 以便被 Unreal 系統呼叫
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-    // **新增：攻擊輸入處理函數**
+    // 攻擊輸入處理函數
     void Attack(const FInputActionValue& Value);
 
     // ====================================================================
-    // >>> **新增：攻擊相關函數** <<<
+    // >>> Combo 攻擊相關屬性 <<<
     // ====================================================================
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
+    bool bIsAttacking; // 是否正在進行攻擊（包括 Combo 的任何一段）
 
-    /**
-     * @brief 播放普通攻擊動畫蒙太奇並禁用移動/輸入。
-     */
-    UFUNCTION(BlueprintCallable, Category = "Animation|Attack")
-    void PlayNormalAttack();
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
+    int32 CurrentAttackComboIndex; // 當前的 Combo 段數 (從 0 開始)
 
-    /**
-     * @brief 處理來自普通攻擊蒙太奇的 Anim Notify 事件，執行傷害判定。
-     * 此函數通常從動畫藍圖中透過 Anim Notify 事件呼叫 (例如：AnimNotify_HitCheck)。
-     */
-    UFUNCTION(BlueprintCallable, Category = "Animation|Attack")
-    void PerformNormalAttackHitCheck();
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attack") // EditDefaultsOnly 方便在藍圖默認值中設置
+    TArray<UAnimMontage*> AttackMontages; // 儲存所有攻擊蒙太奇的數組 (按照 Combo 順序)
 
-    /**
-     * @brief 回調函數：普通攻擊蒙太奇播放結束或被中斷。
-     * 用於在攻擊動畫結束後，恢復角色狀態。
-     */
-    UFUNCTION()
-    void OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
+    bool bCanEnterNextCombo; // 是否可以在當前攻擊蒙太奇的特定時間點輸入下一段 Combo
 
-    // 這個指針用於在 C++ 中引用已經創建的血條 Widget 實例。
-    // UPROPERTY(): 這是必須的，它讓 Unreal 的垃圾回收器能夠追蹤並管理這個 UObject 指針的生命週期。
-    UPROPERTY()
-    UHealthBarBaseWidget* HealthBarWidgetInstance; 
+    FTimerHandle ComboWindowTimerHandle; // 用於管理 Combo 輸入窗口的定時器
+
+    // 考慮讓攻擊函數更通用，或者創建一個 StartAttackCombo
+    // UFUNCTION(BlueprintCallable, Category = "Attack")
+    // void StartAttackCombo(); // 如果攻擊觸發邏輯在藍圖，可以這樣
+
+    // 內部 Combo 邏輯函數
+    void PlayAttackComboSegment(); // 播放指定 Combo 段數的攻擊動畫
+    void TryEnterNextCombo(); // 嘗試進入下一段 Combo
+    void ResetCombo(); // 重設 Combo 狀態
+    
+    UFUNCTION() // UFUNCTION 必須要有，因為它要被 SetTimerbyEvent 調用
+    void OnComboWindowEnd(); // Combo 輸入窗口結束時調用
+
+    // ====================================================================
+    // >>> UI <<<
+    // ====================================================================
+    // 確保這裡有 HealthBarWidgetInstance 的宣告！
+    UPROPERTY() // 不需要 EditAnywhere，因為它是在 C++ 中創建的實例
+    UHealthBarBaseWidget* HealthBarWidgetInstance;
 
 private:
     // ====================================================================

@@ -258,16 +258,6 @@ void APlayerCharacter::StopJumping()
     Super::StopJumping(); // 呼叫基底 Character 類的 StopJumping 函數
 }
 
-// 攻擊輸入處理
-void APlayerCharacter::Attack(const FInputActionValue& Value)
-{
-    // 如果正在播放入場動畫或已經在攻擊中，則不允許再次攻擊
-    if (bIsPlayingEntranceAnimation || bIsAttacking) return;
-
-    // 呼叫播放普通攻擊動畫的函數
-    PlayNormalAttack();
-}
-
 // ====================================================================
 // >>> 入場動畫實作 <<<
 // ====================================================================
@@ -362,102 +352,168 @@ void APlayerCharacter::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 }
 
 // ====================================================================
-// >>> **新增：普通攻擊實作** <<<
+// >>> 攻擊輸入處理 (整合 Combo 邏輯) <<<
+// ====================================================================
+void APlayerCharacter::Attack(const FInputActionValue& Value)
+{
+    // 如果正在播放入場動畫，或者角色已經死亡，則不允許攻擊
+    if (bIsPlayingEntranceAnimation || bIsDead) return; // bIsDead 是 CharacterBase 的屬性
+
+    if (!bIsAttacking) // 如果當前不在攻擊狀態，則啟動第一次攻擊
+    {
+        CurrentAttackComboIndex = 0; // 從第一個 Combo 段開始
+        PlayAttackComboSegment();
+    }
+    else if (bCanEnterNextCombo) // 如果正在攻擊中，並且處於可輸入下一段 Combo 的窗口
+    {
+        TryEnterNextCombo();
+    }
+    // else 如果 bIsAttacking 為 true 但 bCanEnterNextCombo 為 false，則忽略本次攻擊輸入（玩家輸入過早或過晚）
+}
+
+// ====================================================================
+// >>> Combo 攻擊實作 <<<
 // ====================================================================
 
-void APlayerCharacter::PlayNormalAttack()
+void APlayerCharacter::PlayAttackComboSegment()
 {
-    if (NormalAttackMontage) // 檢查是否有設定普通攻擊 Montage
+    // 確保有設定攻擊蒙太奇，並且當前索引有效
+    if (AttackMontages.IsValidIndex(CurrentAttackComboIndex) && AttackMontages[CurrentAttackComboIndex])
     {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 取得動畫實例
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
-            // 播放普通攻擊蒙太奇
-            float Duration = AnimInstance->Montage_Play(NormalAttackMontage, 1.0f); 
+            UAnimMontage* CurrentMontage = AttackMontages[CurrentAttackComboIndex];
+            float Duration = AnimInstance->Montage_Play(CurrentMontage, 1.0f); 
             
-            if (Duration > 0.0f) // 如果成功播放
+            if (Duration > 0.0f)
             {
-                bIsAttacking = true; // 設定攻擊狀態為 true
+                bIsAttacking = true;
+                bCanEnterNextCombo = false; // 播放新攻擊段時，重置為不能輸入下一段，直到 Notify 觸發
 
-                // 綁定到普通攻擊 Montage 結束事件作為安全網
-                AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnNormalAttackMontageEnded); 
-                AnimInstance->OnMontageEnded.AddDynamic(this, &APlayerCharacter::OnNormalAttackMontageEnded);
+                // 綁定到攻擊蒙太奇結束事件
+                AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnAttackMontageEnded); 
+                AnimInstance->OnMontageEnded.AddDynamic(this, &APlayerCharacter::OnAttackMontageEnded);
                 
-                // 在攻擊期間禁用移動（或你可以設定一個減速）
-                GetCharacterMovement()->StopMovementImmediately(); // 立即停止移動
-                GetCharacterMovement()->DisableMovement(); // 禁用移動輸入影響
+                GetCharacterMovement()->StopMovementImmediately(); 
+                GetCharacterMovement()->DisableMovement(); // 攻擊期間禁用移動
                 
-                // 這裡暫時不禁用碰撞，因為攻擊需要接觸敵人
-                // 如果你的攻擊動畫需要 Root Motion，則要確保 CharacterMovementComponent 的 Root Motion 設定正確
+                // 清除任何舊的 Combo Window Timer
+                GetWorldTimerManager().ClearTimer(ComboWindowTimerHandle);
+                // 在動畫中設置 Anim Notify 來觸發 SetCanEnterNextCombo(true) 和 PerformNormalAttackHitCheck
+                // 並在 Combo Window 結束後重置 Combo，如果沒有新的輸入。
+                // 這個定時器時間需要根據你的動畫和 Anim Notify 的設置來調整。
+                // 假設 Combo Window 在當前攻擊動畫的 0.5 秒後結束，如果沒有新的輸入就重置。
+                // 這需要你在蒙太奇中添加一個 AnimNotify 來精確控制 bCanEnterNextCombo
+                // 如果沒有精確的 AnimNotify，這裡設置的 ComboWindowTimerHandle 將作為一個安全網。
+                // 通常會在攻擊動畫的特定幀後設置這個定時器
+                GetWorldTimerManager().SetTimer(ComboWindowTimerHandle, this, &APlayerCharacter::OnComboWindowEnd, Duration * 0.75f, false);
             }
             else
             {
-                // 如果 Montage_Play 失敗，設定攻擊狀態為 false
-                UE_LOG(LogTemp, Warning, TEXT("Montage_Play failed for NormalAttackMontage."));
-                bIsAttacking = false;
-                GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 恢復移動模式
+                UE_LOG(LogTemp, Warning, TEXT("Montage_Play failed for AttackMontage index %d."), CurrentAttackComboIndex);
+                ResetCombo(); // 播放失敗，重置 Combo
             }
         }
         else
         {
             UE_LOG(LogTemp, Warning, TEXT("AnimInstance is null for PlayerCharacter during attack."));
-            bIsAttacking = false;
-            GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+            ResetCombo();
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("NormalAttackMontage is not set on PlayerCharacter!"));
-        bIsAttacking = false;
+        UE_LOG(LogTemp, Warning, TEXT("AttackMontage index %d is invalid or Montage is null!"), CurrentAttackComboIndex);
+        ResetCombo(); // 蒙太奇無效，重置 Combo
+    }
+}
+
+void APlayerCharacter::TryEnterNextCombo()
+{
+    // 如果可以進入下一段 Combo，並且還沒達到 Combo 最大段數
+    if (bCanEnterNextCombo && (CurrentAttackComboIndex + 1) < AttackMontages.Num())
+    {
+        CurrentAttackComboIndex++; // 進入下一段
+        PlayAttackComboSegment(); // 播放下一段攻擊
+        GetWorldTimerManager().ClearTimer(ComboWindowTimerHandle); // 清除舊的 Combo Window Timer
+        UE_LOG(LogTemp, Log, TEXT("Entered next combo segment: %d"), CurrentAttackComboIndex);
+    }
+    else
+    {
+        // 不能進入下一段 Combo（例如，達到最大段數或時間窗已過），則重置 Combo
+        UE_LOG(LogTemp, Warning, TEXT("Cannot enter next combo. Resetting combo."));
+        ResetCombo();
+    }
+}
+
+void APlayerCharacter::ResetCombo()
+{
+    UE_LOG(LogTemp, Log, TEXT("Resetting Attack Combo."));
+    CurrentAttackComboIndex = 0;
+    bIsAttacking = false;
+    bCanEnterNextCombo = false;
+    GetWorldTimerManager().ClearTimer(ComboWindowTimerHandle); // 清除任何剩餘的 Combo Window Timer
+    GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 恢復移動模式
+    // 注意：這裡假設在攻擊期間禁用移動，恢復時將其設為步行模式。
+    // 如果你在攻擊期間禁用了碰撞，也要在這裡重新啟用。
+}
+
+void APlayerCharacter::OnComboWindowEnd()
+{
+    // 這個函數由 ComboWindowTimerHandle 調用
+    // 如果定時器結束時 bIsAttacking 仍然為 true 且 bCanEnterNextCombo 沒有被新的輸入設置為 true，
+    // 說明玩家在 Combo Window 內沒有輸入下一段，此時應重置 Combo。
+    if (bIsAttacking && !bCanEnterNextCombo) // 確保仍處於攻擊狀態，且沒有成功進入下一段
+    {
+        UE_LOG(LogTemp, Log, TEXT("Combo Window Ended without next input. Resetting combo."));
+        ResetCombo();
+    }
+}
+
+void APlayerCharacter::SetCanEnterNextCombo(bool bCan)
+{
+    bCanEnterNextCombo = bCan;
+    if (bCan)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Can enter next combo now."));
+        // 如果這個函數由 Anim Notify 觸發，可能需要在這裡清除舊的 OnComboWindowEnd 定時器，
+        // 因為新的 Combo Window 會在 TryEnterNextCombo 中設置。
+        // 但由於 TryEnterNextCombo 會立即清除，這裡不清除也沒關係。
+        GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, TEXT("Can Enter Next Combo!"));
     }
 }
 
 void APlayerCharacter::PerformNormalAttackHitCheck()
 {
-    // 這個函數將由 Anim Notify 呼叫
-    UE_LOG(LogTemp, Log, TEXT("Performing Normal Attack Hit Check!"));
+    // 這個函數由 Anim Notify 呼叫
+    UE_LOG(LogTemp, Log, TEXT("Performing Normal Attack Hit Check for Combo Segment: %d"), CurrentAttackComboIndex);
 
-    // 攻擊判定參數設定
-    FVector StartLocation = GetMesh()->GetSocketLocation(TEXT("weapon_l")); // 假設攻擊範圍從角色右手開始
-    // 如果沒有 hand_r 這個骨骼或 Socket，請替換為其他合適的 Socket 名稱，
-    // 或使用 GetActorLocation() + GetActorForwardVector() * Offset 來決定起始點。
-
-    // 延伸攻擊範圍，這裡向角色前方延伸 150 單位
+    FVector StartLocation = GetMesh()->GetSocketLocation(TEXT("weapon_l")); // 或其他合適的 Socket
     FVector EndLocation = StartLocation + GetActorForwardVector() * 150.0f; 
-
-    // 用於儲存碰撞結果
     TArray<FHitResult> HitResults;
-
-    // 碰撞查詢參數
     FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this); // 忽略角色自己，避免自體碰撞
-    Params.bTraceComplex = true; // 進行精確碰撞，而不是簡單體積
+    Params.AddIgnoredActor(this);
+    Params.bTraceComplex = true;
 
-    // 碰撞對象類型：只掃描 Pawn 和 PhysicsBody (通常敵人是 Pawn，環境可破壞物可能是 PhysicsBody)
-    // 這些通道需要你在 Project Settings -> Collision 中設定。
-    // 暫時可以先用 Default 的 WorldDynamic 或 ECC_Pawn
     TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn)); // 假設敵人是 Pawn 類型
-    // ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_PhysicsBody)); // 如果有可破壞的物理物體
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn)); 
 
-    // 掃描形狀：球體掃描 (或 BoxTrace, CapsuleTrace)
-    FCollisionShape SphereShape = FCollisionShape::MakeSphere(70.0f); // 掃描半徑 70 單位
+    FCollisionShape SphereShape = FCollisionShape::MakeSphere(70.0f);
 
-    // 執行多重球體掃描
     bool bHit = UKismetSystemLibrary::SphereTraceMultiForObjects(
         GetWorld(),
         StartLocation,
         EndLocation,
-        SphereShape.GetSphereRadius(), // 球體半徑
+        SphereShape.GetSphereRadius(),
         ObjectTypes,
-        false, // 不畫出除錯線
-        TArray<AActor*>(), // 額外忽略的 Actor 列表 (Params中已設定忽略自己)
-        EDrawDebugTrace::ForDuration, // 除錯線持續顯示一段時間
+        false, 
+        TArray<AActor*>(), 
+        EDrawDebugTrace::ForDuration, 
         HitResults,
-        true, // 是否忽略自身
-        FLinearColor::Red, // 除錯線命中顏色
-        FLinearColor::Green, // 除錯線未命中顏色
-        5.0f // 除錯線顯示時間
+        true, 
+        FLinearColor::Red, 
+        FLinearColor::Green, 
+        5.0f 
     );
 
     if (bHit)
@@ -466,38 +522,36 @@ void APlayerCharacter::PerformNormalAttackHitCheck()
         {
             if (AActor* HitActor = Hit.GetActor())
             {
-                // 檢查是否是敵人 (或可受傷的 Actor)
-                // 這裡可以加入更精確的判斷，例如：
-                // if (HitActor->ActorHasTag(TEXT("Enemy")))
-                // 或 if (Cast<AEnemyCharacter>(HitActor))
-                
-                UE_LOG(LogTemp, Log, TEXT("攻擊命中: %s"), *HitActor->GetName());
-
-                // 造成傷害：使用 Unreal Engine 內建的 TakeDamage 函數
-                // 這是最基礎的傷害處理，未來會用 HealthComponent 來取代
-                FDamageEvent DamageEvent; // 簡單的傷害事件
-                HitActor->TakeDamage(25.0f, DamageEvent, GetController(), this); // 造成 25 點傷害
+                // 如果碰撞到的是自己，則略過
+                // TODO: 這裡可以加入更精確的敵人判斷
+                if (HitActor != this)
+                {
+                    UE_LOG(LogTemp, Log, TEXT("攻擊命中: %s"), *HitActor->GetName());
+                    FDamageEvent DamageEvent;
+                    HitActor->TakeDamage(25.0f, DamageEvent, GetController(), this);
+                }
             }
         }
     }
 }
 
-void APlayerCharacter::OnNormalAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+void APlayerCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    // 如果結束的蒙太奇是我們的普通攻擊蒙太奇
-    if (Montage == NormalAttackMontage)
+    // 如果結束的蒙太奇是我們的攻擊蒙太奇數組中的一個
+    // 並且我們確實處於攻擊狀態 (bIsAttacking)
+    if (AttackMontages.Contains(Montage) && bIsAttacking)
     {
-        UE_LOG(LogTemp, Log, TEXT("Normal Attack Montage Ended."));
-        bIsAttacking = false; // 重設攻擊狀態為 false
+        UE_LOG(LogTemp, Log, TEXT("Attack Montage Ended (Index: %d, Interrupted: %s)."), CurrentAttackComboIndex, bInterrupted ? TEXT("True") : TEXT("False"));
+        
+        // 無論蒙太奇是正常結束還是被中斷，都嘗試重置 Combo
+        // ResetCombo() 會處理所有狀態的重置
+        ResetCombo();
 
-        // 重新啟用移動
-        GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 將移動模式設定回步行
-
-        // 移除委託，防止多次綁定
+        // 總是移除委託，以防止多次綁定
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
-            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnNormalAttackMontageEnded);
+            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnAttackMontageEnded);
         }
     }
 }

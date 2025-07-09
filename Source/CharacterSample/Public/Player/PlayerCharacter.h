@@ -19,11 +19,6 @@
 
 #include "PlayerCharacter.generated.h" // 確保這是最後一個 #include
 
-// --- UI 相關的前置聲明 ---
-// 這裡需要前置聲明你的 UHealthBarBaseWidget C++ 類別
-// 這樣 C++ 編譯器在看到 TSubclassOf<UHealthBarBaseWidget> 和 UHealthBarBaseWidget* 時才知道它們是什麼
-class UHealthBarBaseWidget; 
-
 UCLASS()
 class CHARACTERSAMPLE_API APlayerCharacter : public ACharacterBase
 {

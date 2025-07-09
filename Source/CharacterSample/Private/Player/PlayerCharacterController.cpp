@@ -3,7 +3,7 @@
 
 #include "Player/PlayerCharacterController.h"
 #include "Blueprint/UserWidget.h" // 需要這個來使用 CreateWidget
-#include "HealthBarBaseWidget.h" // 需要這個來訪問 UHealthBarBaseWidget 的成員
+#include "UI/HealthBarBaseWidget.h" // 需要這個來訪問 UHealthBarBaseWidget 的成員
 #include "Player/PlayerCharacter.h" // 需要這個來 Cast 到 PlayerCharacter
 #include "EnhancedInputSubsystems.h" // 如果你還要在這裡放輸入設定，就需要這個
 #include "InputMappingContext.h" // 如果你還要在這裡放輸入設定，就需要這個

@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "HealthBarBaseWidget.h"
+#include "UI/HealthBarBaseWidget.h"
 // #include "Kismet/GameplayStatics.h" // 如果你在這裡需要用到 GameplayStatics，才需要包含
 // #include "Components/ProgressBar.h" // 如果你直接在 C++ 中訪問 ProgressBar
 

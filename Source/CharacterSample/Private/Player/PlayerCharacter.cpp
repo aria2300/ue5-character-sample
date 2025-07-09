@@ -7,7 +7,6 @@
 #include "Kismet/KismetSystemLibrary.h" // 用於藍圖輔助函數，如 Sweep Trace
 #include "Engine/DamageEvents.h" // 用於處理傷害事件
 #include "Blueprint/UserWidget.h" // 用於 UI Widget 的創建
-#include "HealthBarBaseWidget.h" // 包含自定義血條 Widget 的頭檔
 #include "GameFramework/SpringArmComponent.h" // 包含 SpringArm 組件的頭檔 (雖然在 .h 中聲明，但這裡可能也需要)
 #include "Camera/CameraComponent.h" // 包含攝影機組件的頭檔 (同上)
 #include "InputMappingContext.h" // 包含 Enhanced Input Mapping Context 的頭檔

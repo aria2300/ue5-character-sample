@@ -98,17 +98,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void SetPendingNextComboInput(bool bPending);
 
-    // ====================================================================
-    // >>> UI 相關屬性 <<<
-    // ====================================================================
-
-    // 這個屬性允許你在藍圖編輯器中指定要使用的血條 Widget Blueprint 類別。
-    // EditDefaultsOnly: 只能在藍圖的 Default 屬性中編輯，不能在實例上編輯。
-    // Category = "UI": 讓它在藍圖 Details 面板中歸類到 "UI" 分類下。
-    // TSubclassOf<UHealthBarBaseWidget>: 確保只能選擇繼承自 UHealthBarBaseWidget 的藍圖 Widget 類別。
-    UPROPERTY(EditDefaultsOnly, Category = "UI")
-    TSubclassOf<UHealthBarBaseWidget> HealthBarWidgetClass;
-
 protected:
     // BeginPlay：在遊戲開始時或角色被生成時呼叫
     virtual void BeginPlay() override;
@@ -182,13 +171,6 @@ protected:
     
     UFUNCTION() // UFUNCTION 必須要有，因為它要被 SetTimerbyEvent 調用
     void OnComboWindowEnd(); // Combo 輸入窗口結束時調用
-
-    // ====================================================================
-    // >>> UI <<<
-    // ====================================================================
-    // 確保這裡有 HealthBarWidgetInstance 的宣告！
-    UPROPERTY() // 不需要 EditAnywhere，因為它是在 C++ 中創建的實例
-    UHealthBarBaseWidget* HealthBarWidgetInstance;
 
 private:
     // ====================================================================

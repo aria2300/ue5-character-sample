@@ -90,31 +90,6 @@ void APlayerCharacter::BeginPlay()
 {
     Super::BeginPlay(); // 呼叫父類 (ACharacter) 的 BeginPlay 函式
 
-    // --- UI 創建邏輯 ---
-    // 判斷是否是本地玩家控制的角色。
-    // 這是為了防止在多人遊戲中，服務器或其他客戶端重複創建玩家的 UI。
-    if (IsLocallyControlled())
-    {
-        // 檢查藍圖中是否已經設置了 HealthBarWidgetClass (一個藍圖類別引用)。
-        if (HealthBarWidgetClass)
-        {
-            // 使用 CreateWidget 函式來創建你的血條 Widget 實例。
-            // Cast<UHealthBarBaseWidget> 確保返回的實例是指向 UHealthBarBaseWidget 類型。
-            HealthBarWidgetInstance = CreateWidget<UHealthBarBaseWidget>(GetWorld(), HealthBarWidgetClass);
-
-            // 檢查是否成功創建了 Widget 實例。
-            if (HealthBarWidgetInstance)
-            {
-                // 呼叫你的 HealthBarBaseWidget 中定義的初始化函式，將當前角色 (this) 傳遞給它。
-                // 這樣血條 Widget 就能知道它屬於哪個角色，並可以開始監聽該角色的生命值變化。
-                HealthBarWidgetInstance->SetOwnerCharacterAndInitialize(this);
-
-                // 將創建的血條 Widget 添加到遊戲視口中，使其能夠被玩家看到。
-                HealthBarWidgetInstance->AddToViewport();
-            }
-        }
-    }
-
     // --- 輸入系統設定 ---
     // 取得玩家控制器。
     APlayerController* PlayerController = Cast<APlayerController>(GetController());

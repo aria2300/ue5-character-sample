@@ -19,6 +19,16 @@
 
 #include "PlayerCharacter.generated.h" // 確保這是最後一個 #include
 
+// 前向聲明 CombatComponent
+class UCombatComponent;
+
+// 前向聲明 Input 相關類
+// class UInputMappingContext;
+// class UInputAction;
+// class USpringArmComponent;
+// class UCameraComponent;
+class UAnimMontage; // 雖然攻擊蒙太奇移走了，但入場動畫還在這裡
+
 UCLASS()
 class CHARACTERSAMPLE_API APlayerCharacter : public ACharacterBase
 {
@@ -77,21 +87,12 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Entrance")
     bool bIsPlayingEntranceAnimation; // 標誌：指示是否正在播放入場動畫
-
-    // ====================================================================
-    // >>> Combo 攻擊相關函數 <<<
-    // ====================================================================
-    UFUNCTION(BlueprintCallable, Category = "Attack") // 提供給 Anim Notify 調用
-    void PerformNormalAttackHitCheck(); // 執行攻擊判定
-
-    UFUNCTION() // UFUNCTION 必須要有，因為它要被 AddDynamic 委託綁定
-    void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted); // 攻擊蒙太奇結束處理 (用於 Combo 邏輯)
-
-    UFUNCTION(BlueprintCallable, Category = "Attack") // 提供給 Anim Notify 調用，設置下一段 Combo 的輸入窗口
-    void SetCanEnterNextCombo(bool bCan);
-
-    UFUNCTION(BlueprintCallable, Category = "Combat")
-    void SetPendingNextComboInput(bool bPending);
+	
+	// ====================================================================
+	// >>> 新增：戰鬥組件引用 <<<
+	// ====================================================================
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UCombatComponent* CombatComponent; // <-- 新增：指向我們新創建的戰鬥組件
 
 protected:
     // BeginPlay：在遊戲開始時或角色被生成時呼叫
@@ -132,40 +133,6 @@ protected:
      */
     UFUNCTION() // 宣告為 UFunction 以便被 Unreal 系統呼叫
     void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
-    // 攻擊輸入處理函數
-    void Attack(const FInputActionValue& Value);
-
-    // ====================================================================
-    // >>> Combo 攻擊相關屬性 <<<
-    // ====================================================================
-    bool bPendingNextComboInput; // 新增：標記是否有待處理的下一段Combo輸入
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
-    bool bIsAttacking; // 是否正在進行攻擊（包括 Combo 的任何一段）
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
-    int32 CurrentAttackComboIndex; // 當前的 Combo 段數 (從 0 開始)
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Attack") // EditDefaultsOnly 方便在藍圖默認值中設置
-    TArray<UAnimMontage*> AttackMontages; // 儲存所有攻擊蒙太奇的數組 (按照 Combo 順序)
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attack")
-    bool bCanEnterNextCombo; // 是否可以在當前攻擊蒙太奇的特定時間點輸入下一段 Combo
-
-    FTimerHandle ComboWindowTimerHandle; // 用於管理 Combo 輸入窗口的定時器
-
-    // 考慮讓攻擊函數更通用，或者創建一個 StartAttackCombo
-    // UFUNCTION(BlueprintCallable, Category = "Attack")
-    // void StartAttackCombo(); // 如果攻擊觸發邏輯在藍圖，可以這樣
-
-    // 內部 Combo 邏輯函數
-    void PlayAttackComboSegment(); // 播放指定 Combo 段數的攻擊動畫
-    void TryEnterNextCombo(); // 嘗試進入下一段 Combo
-    void ResetCombo(); // 重設 Combo 狀態
-    
-    UFUNCTION() // UFUNCTION 必須要有，因為它要被 SetTimerbyEvent 調用
-    void OnComboWindowEnd(); // Combo 輸入窗口結束時調用
 
 private:
     // ====================================================================

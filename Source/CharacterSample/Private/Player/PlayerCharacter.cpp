@@ -9,11 +9,9 @@
 #include "Blueprint/UserWidget.h" // 用於 UI Widget 的創建
 #include "GameFramework/SpringArmComponent.h" // 包含 SpringArm 組件的頭檔 (雖然在 .h 中聲明，但這裡可能也需要)
 #include "Camera/CameraComponent.h" // 包含攝影機組件的頭檔 (同上)
-#include "InputMappingContext.h" // 包含 Enhanced Input Mapping Context 的頭檔
-#include "EnhancedInputSubsystems.h" // 包含 Enhanced Input Subsystem 的頭檔
-#include "EnhancedInputComponent.h" // 包含 Enhanced Input Component 的頭檔
 #include "Kismet/KismetMathLibrary.h" // 用於數學輔助函數，如 GetForwardVector
-#include "Components/CombatComponent.h" // <-- 新增：包含 CombatComponent 的頭檔
+#include "Components/CombatComponent.h" // 包含 CombatComponent 的頭檔
+#include "Components/CharacterInputManagerComponent.h" // 包含角色輸入管理組件的頭檔
 #include "Engine/Engine.h" // 用於 GEngine->AddOnScreenDebugMessage
 
 // ====================================================================
@@ -37,7 +35,6 @@ APlayerCharacter::APlayerCharacter()
     bUseControllerRotationPitch = false; // 禁用 Pitch 軸跟隨
     bUseControllerRotationRoll = false;  // 禁用 Roll 軸跟隨
 
-    // 取得角色移動組件的引用。
     UCharacterMovementComponent* MovementComp = GetCharacterMovement();
     if (MovementComp)
     {
@@ -59,6 +56,11 @@ APlayerCharacter::APlayerCharacter()
     CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
     // 可以為組件設定一些預設值，但通常它的配置會在藍圖中進行，或者在 CombatComponent 自己的構造函數中。
     // CombatComponent->SetIsReplicated(true); // 如果需要網路複製，可以在這裡設置
+
+    // --- 在這裡創建和初始化 CharacterInputManagerComponent ---
+    // 將其創建為子對象，以便可以在藍圖中訪問和配置其輸入屬性。
+    CharacterInputManagerComponent = CreateDefaultSubobject<UCharacterInputManagerComponent>(TEXT("InputManager"));
+
 
     // 設定攝影機臂 (SpringArmComponent) 和攝影機 (CameraComponent)。
     // 假設你的角色藍圖中已經有這些組件。
@@ -95,21 +97,6 @@ APlayerCharacter::APlayerCharacter()
 void APlayerCharacter::BeginPlay()
 {
     Super::BeginPlay(); // 呼叫父類 (ACharacter) 的 BeginPlay 函式
-
-    // --- 輸入系統設定 ---
-    // 取得玩家控制器。
-    APlayerController* PlayerController = Cast<APlayerController>(GetController());
-    if (PlayerController)
-    {
-        // 取得 Enhanced Input Local Player 子系統。這是處理新版輸入的關鍵組件。
-        UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
-        if (Subsystem)
-        {
-            // 添加預設的輸入映射上下文。
-            // `DefaultMappingContext` 是一個 UInputMappingContext* 變數，你需要在藍圖中為它賦值。
-            Subsystem->AddMappingContext(DefaultMappingContext, 0); // 優先級設為 0
-        }
-    }
 
     // ====================================================================
     // >>> 遊戲初始狀態：禁用輸入並播放入場動畫 <<<
@@ -174,39 +161,18 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent); // 呼叫父類的 SetupPlayerInputComponent
 
-    // 將基礎的 UInputComponent 轉換為 UEnhancedInputComponent，以便使用 Enhanced Input System。
-    UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent);
-    if (EnhancedInputComponent)
+    // 將輸入綁定工作委託給 CharacterInputManagerComponent
+    if (CharacterInputManagerComponent) // 確保組件存在
     {
-        // 綁定移動輸入動作 (MoveAction)，當輸入被觸發時，呼叫 Move 函式。
-        if (MoveAction)
-        {
-            EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Move);
-        }
-        
-        // 綁定跳躍輸入動作 (JumpAction)。
-        // "Started" 事件：按下跳躍鍵時呼叫 Jump。
-        // "Completed" 事件：鬆開跳躍鍵時呼叫 StopJumping。
-        if (JumpAction)
-        {
-            EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &APlayerCharacter::Jump);
-            EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &APlayerCharacter::StopJumping);
-        }
-
-        // 綁定視角輸入動作 (LookAction)，用於控制攝影機。
-        if (LookAction)
-        {
-            EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Look);
-        }
-
-        // 綁定攻擊輸入到 AttackAction & CombatComponent。
-        // "Started" 事件：按下攻擊鍵時呼叫 Attack。
-        // ETriggerEvent::Started 確保只有在按鍵的初始按下瞬間觸發一次，避免長按持續觸發。
-        if (AttackAction && CombatComponent) // 確保 CombatComponent 存在
-        {
-            EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, CombatComponent, &UCombatComponent::Attack);
-        }
+        // 呼叫 CharacterInputManagerComponent 的 SetupInputBindings 函式，
+        // 將 PlayerInputComponent 和當前角色 (this) 傳入。
+        CharacterInputManagerComponent->SetupInputBindings(PlayerInputComponent, this, CombatComponent);
     }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("APlayerCharacter: CharacterInputManagerComponent is null! Input bindings will not be set."));
+    }
+
 }
 
 // ====================================================================

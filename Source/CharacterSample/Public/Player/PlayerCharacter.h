@@ -21,12 +21,8 @@
 
 // 前向聲明 CombatComponent
 class UCombatComponent;
-
-// 前向聲明 Input 相關類
-// class UInputMappingContext;
-// class UInputAction;
-// class USpringArmComponent;
-// class UCameraComponent;
+// 前向聲明 CharacterInputManagerComponent
+class UCharacterInputManagerComponent; // <-- 新增：前向聲明我們的輸入管理組件
 class UAnimMontage; // 雖然攻擊蒙太奇移走了，但入場動畫還在這裡
 
 UCLASS()
@@ -94,9 +90,11 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UCombatComponent* CombatComponent; // <-- 新增：指向我們新創建的戰鬥組件
 
-protected:
-    // BeginPlay：在遊戲開始時或角色被生成時呼叫
-    virtual void BeginPlay() override;
+    // ====================================================================
+    // >>> 新增：輸入管理組件引用 <<<
+    // ====================================================================
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    UCharacterInputManagerComponent* CharacterInputManagerComponent; // <-- 新增此行
 
     // ====================================================================
     // >>> 輸入處理函數 <<<
@@ -108,6 +106,10 @@ protected:
     // 覆寫 Character 類的跳躍函數，以處理輸入禁用邏輯
     virtual void Jump() override;
     virtual void StopJumping() override;
+
+protected:
+    // BeginPlay：在遊戲開始時或角色被生成時呼叫
+    virtual void BeginPlay() override;
 
     // ====================================================================
     // >>> 入場動畫相關函數 <<<

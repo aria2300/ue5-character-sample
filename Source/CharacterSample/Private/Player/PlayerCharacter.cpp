@@ -12,6 +12,7 @@
 #include "Kismet/KismetMathLibrary.h" // 用於數學輔助函數，如 GetForwardVector
 #include "Components/CombatComponent.h" // 包含 CombatComponent 的頭檔
 #include "Components/CharacterInputManagerComponent.h" // 包含角色輸入管理組件的頭檔
+#include "Components/EntranceAnimationComponent.h" // 包含入場動畫組件的頭檔
 #include "Engine/Engine.h" // 用於 GEngine->AddOnScreenDebugMessage
 
 // ====================================================================
@@ -61,6 +62,9 @@ APlayerCharacter::APlayerCharacter()
     // 將其創建為子對象，以便可以在藍圖中訪問和配置其輸入屬性。
     CharacterInputManagerComponent = CreateDefaultSubobject<UCharacterInputManagerComponent>(TEXT("InputManager"));
 
+    // --- 在這裡創建和初始化 EntranceAnimationComponent ---
+    // 這個組件負責處理角色的入場動畫。
+    EntranceAnimationComponent = CreateDefaultSubobject<UEntranceAnimationComponent>(TEXT("EntranceAnimationComp"));
 
     // 設定攝影機臂 (SpringArmComponent) 和攝影機 (CameraComponent)。
     // 假設你的角色藍圖中已經有這些組件。
@@ -82,9 +86,6 @@ APlayerCharacter::APlayerCharacter()
         FollowCamera->bUsePawnControlRotation = false; 
     }
 
-    // 初始化入場動畫的旗標，預設為未播放。
-    bIsPlayingEntranceAnimation = false;
-
     // 預設啟用角色的膠囊碰撞體進行查詢和物理模擬。
     // 這使得角色能夠與世界中的其他物體進行碰撞檢測。
     GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); 
@@ -99,11 +100,20 @@ void APlayerCharacter::BeginPlay()
     Super::BeginPlay(); // 呼叫父類 (ACharacter) 的 BeginPlay 函式
 
     // ====================================================================
-    // >>> 遊戲初始狀態：禁用輸入並播放入場動畫 <<<
-    // 這是遊戲開場時的標準流程，確保玩家在動畫播放時無法控制角色。
+    // >>> 新增或修改以下程式碼區塊 <<<
+    // 確保在遊戲開始時觸發入場動畫組件的邏輯
     // ====================================================================
-    SetPlayerInputEnabled(false); // 遊戲開始時，先禁用玩家輸入
-    PlayEntranceAnimation();      // 播放角色的入場動畫
+    if (EntranceAnimationComponent)
+    {
+        UE_LOG(LogTemp, Log, TEXT("APlayerCharacter::BeginPlay - Calling PlayEntranceAnimation on EntranceAnimationComponent."));
+        EntranceAnimationComponent->PlayEntranceAnimation();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APlayerCharacter::BeginPlay - EntranceAnimationComponent is null! Player input will be enabled directly."));
+        // 如果組件為空，確保玩家輸入仍然被啟用，以防卡住
+        SetPlayerInputEnabled(true); 
+    }
 }
 
 // ====================================================================
@@ -183,9 +193,6 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 // 處理移動輸入。
 void APlayerCharacter::Move(const FInputActionValue& Value)
 {
-    // 如果正在播放入場動畫，直接返回，不處理移動輸入。
-    if (bIsPlayingEntranceAnimation) return;
-
     FVector2D MovementVector = Value.Get<FVector2D>(); // 取得輸入的 2D 向量 (X 和 Y 軸)
 
     if (Controller != nullptr) // 確保控制器存在
@@ -208,9 +215,6 @@ void APlayerCharacter::Move(const FInputActionValue& Value)
 // 處理視角輸入。
 void APlayerCharacter::Look(const FInputActionValue& Value)
 {
-    // 如果正在播放入場動畫，直接返回，不處理視角輸入。
-    if (bIsPlayingEntranceAnimation) return;
-
     FVector2D LookAxisVector = Value.Get<FVector2D>(); // 取得視角輸入的 2D 向量 (X 軸為 Yaw，Y 軸為 Pitch)
 
     if (Controller != nullptr) // 確保控制器存在
@@ -225,118 +229,13 @@ void APlayerCharacter::Look(const FInputActionValue& Value)
 // 處理跳躍輸入。
 void APlayerCharacter::Jump()
 {
-    // 如果正在播放入場動畫，直接返回，不處理跳躍輸入。
-    if (bIsPlayingEntranceAnimation) return;
-
     Super::Jump(); // 呼叫基底 Character 類的 Jump 函式，執行預設跳躍行為
 }
 
 // 處理停止跳躍輸入（鬆開跳躍鍵時）。
 void APlayerCharacter::StopJumping()
 {
-    // 如果正在播放入場動畫，直接返回，不處理停止跳躍輸入。
-    if (bIsPlayingEntranceAnimation) return;
-
     Super::StopJumping(); // 呼叫基底 Character 類的 StopJumping 函式
-}
-
-// ====================================================================
-// >>> 入場動畫實作 <<<
-// 控制遊戲開始時的動畫播放與玩家控制權的啟用。
-// ====================================================================
-
-// 播放入場動畫。
-void APlayerCharacter::PlayEntranceAnimation()
-{
-    if (EntranceMontage) // 檢查是否有設定入場動畫 Montage (UAnimMontage 變數，需在藍圖中指定)
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance(); // 取得角色的動畫實例
-        if (AnimInstance)
-        {
-            // 播放蒙太奇，速度為 1.0f (正常速度)。返回蒙太奇的實際持續時間。
-            float Duration = AnimInstance->Montage_Play(EntranceMontage, 1.0f); 
-            
-            if (Duration > 0.0f) // 如果蒙太奇成功播放 (持續時間大於 0)
-            {
-                bIsPlayingEntranceAnimation = true; // 設定旗標為 true，表示正在播放入場動畫
-                
-                // 綁定到 Montage 結束事件作為安全網。
-                // 先移除現有的委託，以防止重複綁定 (如果 PlayEntranceAnimation 被再次呼叫)。
-                AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded); 
-                // 添加動態委託，當蒙太奇結束時，呼叫 OnMontageEnded 函式。
-                AnimInstance->OnMontageEnded.AddDynamic(this, &APlayerCharacter::OnMontageEnded);
-                
-                // 在動畫期間禁用角色移動組件，防止玩家移動。
-                GetCharacterMovement()->DisableMovement();
-                // 在動畫期間禁用膠囊碰撞體的碰撞，防止角色被推動或卡住。
-                GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision); 
-            }
-            else
-            {
-                // 如果 Montage_Play 返回 0.0 (例如，蒙太奇無效或播放失敗)
-                UE_LOG(LogTemp, Warning, TEXT("Montage_Play failed for EntranceMontage. Enabling Player Input."));
-                SetPlayerInputEnabled(true); // 如果蒙太奇無法播放，立即重新啟用輸入，避免卡住
-            }
-        }
-        else // 如果 AnimInstance 為空 (表示網格或動畫實例有問題)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("AnimInstance is null for PlayerCharacter. Enabling Player Input."));
-            SetPlayerInputEnabled(true); // 如果 AnimInstance 為空，立即重新啟用輸入
-        }
-    }
-    else // 如果沒有設定入場動畫 Montage
-    {
-        UE_LOG(LogTemp, Warning, TEXT("EntranceMontage is not set on PlayerCharacter! Enabling Player Input."));
-        SetPlayerInputEnabled(true); // 如果沒有指定蒙太奇，直接啟用輸入
-    }
-}
-
-// 由動畫藍圖透過 Anim Notify 呼叫。
-// 標誌著玩家應該重新獲得控制權的精確時刻。這是預期的入場動畫結束方式。
-void APlayerCharacter::OnEntranceAnimationFinishedByNotify()
-{
-    // 只有當我們處於入場動畫狀態時才執行，避免重複執行或在錯誤時機執行。
-    if (bIsPlayingEntranceAnimation) 
-    {
-        UE_LOG(LogTemp, Log, TEXT("Entrance Animation Finished by Anim Notify! Enabling Player Input."));
-        bIsPlayingEntranceAnimation = false; // 設定旗標為 false，表示入場動畫結束
-        SetPlayerInputEnabled(true); // 啟用玩家輸入
-
-        // 重新啟用角色移動，將移動模式設定回步行。
-        GetCharacterMovement()->SetMovementMode(MOVE_Walking); 
-        // 重新啟用膠囊碰撞體，使其能夠再次與世界互動。
-        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-
-        // 在通過 Notify 成功完成後，移除 OnMontageEnded 委託，以避免多餘的調用。
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-        if (AnimInstance)
-        {
-            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded);
-        }
-    }
-}
-
-// 進場動畫結束的保險機制。
-// 這個函式由 `AnimInstance->OnMontageEnded` 委託調用。
-// 如果蒙太奇因任何原因結束 (完成或中斷)，並且玩家輸入尚未被 Notify 重新啟用，則強制重新啟用它。
-void APlayerCharacter::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-    // 檢查結束的蒙太奇是否是我們的入場蒙太奇，並且我們仍然處於「正在播放入場動畫」的狀態。
-    if (Montage == EntranceMontage && bIsPlayingEntranceAnimation) 
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Entrance Montage Ended (safety net triggered)! Forcing Input Enabled."));
-        bIsPlayingEntranceAnimation = false; // 設定旗標為 false
-        SetPlayerInputEnabled(true); // 強制啟用玩家輸入
-        GetCharacterMovement()->SetMovementMode(MOVE_Walking); // 恢復移動
-        GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // 恢復碰撞
-
-        // 總是移除委託，以防止陳舊的綁定或重複調用。
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-        if (AnimInstance)
-        {
-            AnimInstance->OnMontageEnded.RemoveDynamic(this, &APlayerCharacter::OnMontageEnded);
-        }
-    }
 }
 
 // ====================================================================

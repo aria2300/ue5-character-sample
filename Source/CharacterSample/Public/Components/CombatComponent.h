@@ -11,6 +11,8 @@
 class APlayerCharacter;
 class UAnimMontage;
 class UInputMappingContext; // 雖然輸入綁定會拆出去，但為了完整性，先聲明
+// 前向聲明 UEntranceAnimationComponent
+class UEntranceAnimationComponent;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class CHARACTERSAMPLE_API UCombatComponent : public UActorComponent
@@ -94,4 +96,8 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat|State")
 	bool bIsDead; // 角色是否死亡 (未來可能移到 HealthComponent)
+
+	// 對 UEntranceAnimationComponent 的引用
+    UPROPERTY() // UPROPERTY 確保垃圾回收器不會回收此引用
+    UEntranceAnimationComponent* EntranceAnimationComponent;
 };

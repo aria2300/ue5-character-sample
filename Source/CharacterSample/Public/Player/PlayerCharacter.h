@@ -9,8 +9,6 @@
 // 包含 Enhanced Input 相關的頭文件
 #include "InputMappingContext.h"
 #include "InputAction.h"
-#include "EnhancedInputSubsystems.h" // ULocalPlayer::GetSubsystem 的頭文件
-#include "EnhancedInputComponent.h" // UEnhancedInputComponent 的頭文件
 #include "GameFramework/SpringArmComponent.h" // SpringArmComponent 的頭文件 (如果使用相機臂)
 #include "Camera/CameraComponent.h" // CameraComponent 的頭文件 (如果使用相機)
 #include "GameFramework/CharacterMovementComponent.h" // CharacterMovementComponent 的頭文件
@@ -22,7 +20,8 @@
 // 前向聲明 CombatComponent
 class UCombatComponent;
 // 前向聲明 CharacterInputManagerComponent
-class UCharacterInputManagerComponent; // <-- 新增：前向聲明我們的輸入管理組件
+class UCharacterInputManagerComponent; // 前向聲明我們的輸入管理組件
+class UEntranceAnimationComponent; // 前向聲明入場動畫組件
 class UAnimMontage; // 雖然攻擊蒙太奇移走了，但入場動畫還在這裡
 
 UCLASS()
@@ -41,26 +40,6 @@ public:
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
     // ====================================================================
-    // >>> 輸入屬性 (Enhanced Input System) <<<
-    // 這些屬性會讓你在藍圖中可以設定對應的輸入資產
-    // ====================================================================
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-    class UInputMappingContext* DefaultMappingContext; // 預設的輸入映射上下文
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-    class UInputAction* MoveAction; // 移動輸入動作
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-    class UInputAction* JumpAction; // 跳躍輸入動作
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-    class UInputAction* LookAction; // 視角輸入動作
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
-    class UInputAction* AttackAction; // 攻擊輸入動作
-
-    // ====================================================================
     // >>> 動畫相關屬性 <<<
     // 這些變數會傳遞給動畫藍圖，用於控制動畫混合
     // ====================================================================
@@ -73,28 +52,22 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Animation")
     bool bIsFalling; // 角色是否正在下落
-
-    // ====================================================================
-    // >>> 入場動畫屬性 <<<
-    // ====================================================================
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation|Entrance")
-    class UAnimMontage* EntranceMontage; // 用於入場動畫的 AnimMontage 資產
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation|Entrance")
-    bool bIsPlayingEntranceAnimation; // 標誌：指示是否正在播放入場動畫
 	
 	// ====================================================================
-	// >>> 新增：戰鬥組件引用 <<<
+	// >>> 組件引用 <<<
 	// ====================================================================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UCombatComponent* CombatComponent; // <-- 新增：指向我們新創建的戰鬥組件
+	UCombatComponent* CombatComponent;
 
     // ====================================================================
-    // >>> 新增：輸入管理組件引用 <<<
+    // >>> 輸入管理組件引用 <<<
     // ====================================================================
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UCharacterInputManagerComponent* CharacterInputManagerComponent; // <-- 新增此行
+    UCharacterInputManagerComponent* CharacterInputManagerComponent;
+
+    // 指向入場動畫組件
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    UEntranceAnimationComponent* EntranceAnimationComponent;
 
     // ====================================================================
     // >>> 輸入處理函數 <<<
@@ -107,36 +80,6 @@ public:
     virtual void Jump() override;
     virtual void StopJumping() override;
 
-protected:
-    // BeginPlay：在遊戲開始時或角色被生成時呼叫
-    virtual void BeginPlay() override;
-
-    // ====================================================================
-    // >>> 入場動畫相關函數 <<<
-    // ====================================================================
-
-    /**
-     * @brief 播放入場動畫蒙太奇，並禁用玩家輸入及移動。
-     * 此函數會在 BeginPlay 時呼叫。
-     */
-    UFUNCTION(BlueprintCallable, Category = "Animation|Entrance") // 讓藍圖可以呼叫這個函數
-    void PlayEntranceAnimation();
-
-    /**
-     * @brief 處理來自入場蒙太奇的 Anim Notify 事件。
-     * 此函數通常會從動畫藍圖中透過 Anim Notify 事件呼叫。
-     */
-    UFUNCTION(BlueprintCallable, Category = "Animation|Entrance") // 讓藍圖可以呼叫這個函數
-    void OnEntranceAnimationFinishedByNotify();
-
-    /**
-     * @brief AnimMontage 播放結束或被中斷時的回調函數。
-     * 此函數作為安全網，以防 Anim Notify 因任何原因未能觸發。
-     */
-    UFUNCTION() // 宣告為 UFunction 以便被 Unreal 系統呼叫
-    void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
-private:
     // ====================================================================
     // >>> 輔助函數 <<<
     // ====================================================================
@@ -146,4 +89,8 @@ private:
      * @param bEnabled 如果為 true 則啟用輸入，false 則禁用。
      */
     void SetPlayerInputEnabled(bool bEnabled);
+
+protected:
+    // BeginPlay：在遊戲開始時或角色被生成時呼叫
+    virtual void BeginPlay() override;
 };

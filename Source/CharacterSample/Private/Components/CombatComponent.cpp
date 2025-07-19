@@ -11,6 +11,7 @@
 #include "Animation/AnimMontage.h" // 用於動畫蒙太奇
 #include "Animation/AnimInstance.h" // 用於動畫實例
 #include "Engine/Engine.h" // 用於 GEngine->AddOnScreenDebugMessage
+#include "Components/EntranceAnimationComponent.h" // 包含 UEntranceAnimationComponent 的頭檔
 
 // ====================================================================
 // >>> 構造函數：UCombatComponent::UCombatComponent() <<<
@@ -18,8 +19,7 @@
 // ====================================================================
 UCombatComponent::UCombatComponent()
 {
-	// 設定為每幀都 Tick，但我們暫時不需要，可以在 .h 中註釋掉 TickComponent
-	// PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bCanEverTick = true;
 
 	CurrentAttackComboIndex = 0;
 	bIsAttacking = false;
@@ -43,6 +43,14 @@ void UCombatComponent::BeginPlay()
 	{
 		UE_LOG(LogTemp, Error, TEXT("CombatComponent must be attached to an APlayerCharacter!"));
 	}
+
+    // --- 在 BeginPlay 中獲取 UEntranceAnimationComponent 的引用 ---
+    // 透過 OwnerCharacter 取得其附加的 EntranceAnimationComponent
+    EntranceAnimationComponent = OwnerCharacter->FindComponentByClass<UEntranceAnimationComponent>();
+    if (!EntranceAnimationComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("CombatComponent: EntranceAnimationComponent not found on OwnerCharacter. Attack checks may be incomplete."));
+    }
 }
 
 
@@ -60,7 +68,8 @@ void UCombatComponent::BeginPlay()
 void UCombatComponent::Attack()
 {
     // 如果角色不存在、正在播放入場動畫，或者角色已經死亡，則不允許攻擊，直接返回。
-    if (!OwnerCharacter || OwnerCharacter->bIsPlayingEntranceAnimation || bIsDead) return;
+    if (!OwnerCharacter || bIsDead) return;
+    if (EntranceAnimationComponent && EntranceAnimationComponent->bIsPlayingEntranceAnimation) return;
 
     // 判斷是否正在攻擊中。
     if (!bIsAttacking)
